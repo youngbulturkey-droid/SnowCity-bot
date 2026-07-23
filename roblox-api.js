@@ -83,9 +83,38 @@ async function sendBan({ kind, value, durationMinutes, reason, moderator }) {
   return { userId };
 }
 
+/**
+ * kind: "charname" | "charid" | "robloxname" | "robloxid"
+ * Unbans a player with the same identification options as ban.
+ */
+async function sendUnban({ kind, value, reason, moderator }) {
+  let userId = null;
+
+  if (kind === 'robloxid') {
+    userId = /^\d+$/.test(value) ? Number(value) : null;
+    if (!userId) throw new Error(`"${value}" is not a valid Roblox Id.`);
+  } else if (kind === 'robloxname') {
+    userId = await getUserIdFromUsername(value);
+    if (!userId) throw new Error(`Could not find a Roblox user named "${value}".`);
+  }
+
+  await publish({
+    type: 'unban',
+    userId, // present for robloxname/robloxid, null for charname/charid
+    kind,
+    value,
+    reason,
+    moderator
+  });
+
+  return { userId };
+}
+
 module.exports = {
   getUserIdFromUsername,
   getUsernameFromUserId,
   sendSSU,
-  sendBan
+  sendBan,
+  sendUnban
 };
+
