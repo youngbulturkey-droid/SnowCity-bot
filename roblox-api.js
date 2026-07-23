@@ -84,26 +84,18 @@ async function sendBan({ kind, value, durationMinutes, reason, moderator }) {
 }
 
 /**
- * kind: "charname" | "charid" | "robloxname" | "robloxid"
- * Unbans a player with the same identification options as ban.
+ * value: a Roblox username or a numeric Roblox Id.
+ * Unbanning is always done by UserId (bans are stored keyed by UserId), so we
+ * resolve usernames here the same way sendBan does for robloxname/robloxid.
  */
-async function sendUnban({ kind, value, reason, moderator }) {
-  let userId = null;
-
-  if (kind === 'robloxid') {
-    userId = /^\d+$/.test(value) ? Number(value) : null;
-    if (!userId) throw new Error(`"${value}" is not a valid Roblox Id.`);
-  } else if (kind === 'robloxname') {
-    userId = await getUserIdFromUsername(value);
-    if (!userId) throw new Error(`Could not find a Roblox user named "${value}".`);
-  }
+async function sendUnban({ value, moderator }) {
+  let userId = /^\d+$/.test(value) ? Number(value) : await getUserIdFromUsername(value);
+  if (!userId) throw new Error(`Could not resolve a Roblox user from "${value}".`);
 
   await publish({
     type: 'unban',
-    userId, // present for robloxname/robloxid, null for charname/charid
-    kind,
+    userId,
     value,
-    reason,
     moderator
   });
 
@@ -117,4 +109,3 @@ module.exports = {
   sendBan,
   sendUnban
 };
-
