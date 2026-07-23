@@ -40,7 +40,7 @@ function isAdmin(interaction) {
 function buildPanelEmbed() {
   return new EmbedBuilder()
     .setTitle('🛠️ Server Admin Panel')
-    .setDescription('Control SSU and manage player bans.\\nConfirmations post in the staff Discord log webhook in-game.')
+    .setDescription('Control SSU and manage player bans.\nConfirmations post in the staff Discord log webhook in-game.')
     .setColor(0x2b6cb0);
 }
 
@@ -49,7 +49,7 @@ function buildPanelRow() {
     new ButtonBuilder().setCustomId('ssu_start').setLabel('Start SSU').setStyle(ButtonStyle.Success).setEmoji('🟢'),
     new ButtonBuilder().setCustomId('ssu_stop').setLabel('Stop SSU').setStyle(ButtonStyle.Danger).setEmoji('🔴'),
     new ButtonBuilder().setCustomId('ban_open').setLabel('Ban').setStyle(ButtonStyle.Secondary).setEmoji('🔨'),
-    new ButtonBuilder().setCustomId('unban_open').setLabel('Unban').setStyle(ButtonStyle.Secondary).setEmoji('✅')
+    new ButtonBuilder().setCustomId('unban_open').setLabel('Unban').setStyle(ButtonStyle.Secondary).setEmoji('♻️')
   );
 }
 
@@ -96,6 +96,35 @@ client.on('interactionCreate', async (interaction) => {
       const durationSeconds = durationRaw ? parseInt(durationRaw, 10) * 60 : null;
       await robloxApi.sendSSU('start', durationSeconds);
       await interaction.editReply(`🟢 Sent **Start SSU**${durationSeconds ? ` (${durationRaw} minutes)` : ' (indefinite)'}. Watch the in-game staff log for confirmation.`);
+      return;
+    }
+
+    // ===== Unban =====
+    if (interaction.isButton() && interaction.customId === 'unban_open') {
+      if (!isAdmin(interaction)) {
+        return interaction.reply({ content: "You don't have permission to do that.", ephemeral: true });
+      }
+      const modal = new ModalBuilder().setCustomId('unban_modal').setTitle('Unban Player');
+      const valueInput = new TextInputBuilder()
+        .setCustomId('value')
+        .setLabel('Roblox Name or Roblox Id')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(valueInput));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'unban_modal') {
+      await interaction.deferReply({ ephemeral: true });
+      const value = interaction.fields.getTextInputValue('value').trim();
+
+      try {
+        const { userId } = await robloxApi.sendUnban({ value, moderator: `Discord: ${interaction.user.tag}` });
+        await interaction.editReply(`♻️ Unban request sent for **${value}** (UserId ${userId}). Check the in-game staff log to confirm it landed.`);
+      } catch (err) {
+        await interaction.editReply(`❌ ${err.message}`);
+      }
       return;
     }
 
@@ -184,81 +213,6 @@ client.on('interactionCreate', async (interaction) => {
       }
       return;
     }
-
-    // ===== Unban flow =====
-    if (interaction.isButton() && interaction.customId === 'unban_open') {
-      if (!isAdmin(interaction)) {
-        return interaction.reply({ content: "You don't have permission to do that.", ephemeral: true });
-      }
-      const select = new StringSelectMenuBuilder()
-        .setCustomId('unban_select_type')
-        .setPlaceholder('Choose how to identify the player')
-        .addOptions(
-          { label: 'Character Name', value: 'ban_char_name' },
-          { label: 'Character Id', value: 'ban_char_id' },
-          { label: 'Roblox Name', value: 'ban_roblox_name' },
-          { label: 'Roblox Id', value: 'ban_roblox_id' }
-        );
-      await interaction.reply({
-        content: 'Select how you want to identify the player to unban:',
-        components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId === 'unban_select_type') {
-      const type = interaction.values[0];
-      const label = BAN_TYPE_LABELS[type];
-
-      const modal = new ModalBuilder().setCustomId(`unban_modal:${type}`).setTitle(`Unban Player — ${label}`);
-
-      const valueInput = new TextInputBuilder().setCustomId('value').setLabel(label).setStyle(TextInputStyle.Short).setRequired(true);
-      const reasonInput = new TextInputBuilder().setCustomId('reason').setLabel('Reason').setStyle(TextInputStyle.Paragraph).setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(valueInput),
-        new ActionRowBuilder().addComponents(reasonInput)
-      );
-
-      await interaction.showModal(modal);
-      return;
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('unban_modal:')) {
-      const type = interaction.customId.split(':')[1];
-      const kind = BAN_TYPE_KIND[type];
-      const label = BAN_TYPE_LABELS[type];
-
-      await interaction.deferReply({ ephemeral: true });
-
-      const value = interaction.fields.getTextInputValue('value').trim();
-      const reason = interaction.fields.getTextInputValue('reason').trim();
-
-      try {
-        const { userId } = await robloxApi.sendUnban({
-          kind,
-          value,
-          reason,
-          moderator: `Discord: ${interaction.user.tag}`
-        });
-
-        const embed = new EmbedBuilder()
-          .setTitle('✅ Unban Request Sent')
-          .setColor(0x38a169)
-          .addFields(
-            { name: 'Identified via', value: `${label}: ${value}${userId ? ` (resolved to UserId ${userId})` : ''}` },
-            { name: 'Reason', value: reason },
-            { name: 'Moderator', value: interaction.user.tag }
-          )
-          .setFooter({ text: kind.startsWith('char') ? 'Character lookups only resolve players currently online — check the in-game staff log to confirm it landed.' : 'Check the in-game staff log to confirm it landed.' });
-
-        await interaction.editReply({ embeds: [embed] });
-      } catch (err) {
-        await interaction.editReply(`❌ ${err.message}`);
-      }
-      return;
-    }
   } catch (err) {
     console.error(err);
     const msg = `⚠️ Something went wrong: ${err.message}`;
@@ -271,4 +225,3 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
